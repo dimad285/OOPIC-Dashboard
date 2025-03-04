@@ -49,3 +49,14 @@ with h5py.File("dump/2.h5", "r") as f:
     np_particles = particles[()]  # Read all data as a NumPy array
     print(np_particles.shape)
 '''
+
+
+'''
+
+
+
+
+
+
+
+'''
