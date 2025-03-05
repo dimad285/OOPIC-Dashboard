@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
 import h5py
-import os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import subprocess
+import threading
+import os
 import numpy as np
 
 NUM_PROCESSES = 3  # Default number of simulated processes
@@ -14,22 +16,45 @@ LIGHT_THEME = {"bg": "#f0f0f0", "fg": "#000000", "frame_bg": "#ffffff", "frame_f
 DARK_THEME = {"bg": "#2e2e2e", "fg": "#ffffff", "frame_bg": "#3e3e3e", "frame_fg": "#ffffff"}
 CURRENT_THEME = DARK_THEME  # Change to LIGHT_THEME for a light mode
 
+    
+import subprocess
+import threading
+import os
+import h5py
+import numpy as np
+
 class ProcessData:
-    def __init__(self, process_id, file_path):
+    def __init__(self, process_id, file_path, command):
         self.process_id = process_id
         self.file_path = file_path
+        self.command = command  # Command to run the simulation
+        self.process = None  # Store the running process
         self.time_steps = []
         self.particle_counts = []
         self.target_currents = []
         self.voltage = 0.0
         self.pressure = 0.0
         self.additional_info = "Initializing..."
-        self.last_modified = 0  # Timestamp of last file modification
-        self.particle_data = np.empty((5, 0))  # Initialize as empty N × 5 matrix
+        self.last_modified = 0
+        self.particle_data = np.empty((5, 0))
+    
+    def start_process(self):
+        """Launch the simulation process in a separate thread."""
+        def run_simulation():
+            self.process = subprocess.Popen(self.command, shell=True)
+            self.process.wait()  # Block until process finishes
+            print(f"Process {self.process_id} finished.")
+
+        thread = threading.Thread(target=run_simulation)
+        thread.start()
     
     def update_from_file(self):
+        """Check if the HDF5 file has new data and update attributes."""
         if not os.path.exists(self.file_path):
             return False  # File does not exist, no update needed
+        
+        if self.process and self.process.poll() is None:
+            return False  # Process is still running, wait before updating
         
         modified_time = os.path.getmtime(self.file_path)
         if modified_time == self.last_modified:
@@ -38,67 +63,40 @@ class ProcessData:
         self.last_modified = modified_time
         self.read_particles_as_matrix("ions")
         particle_count = self.particle_data.shape[1]
-        target_current = self.update_target_current(self.file_path)
+        target_current = self.update_target_current()
         
-        self.time_steps.append(len(self.time_steps))  # Using step index as x-axis
+        self.time_steps.append(len(self.time_steps))
         self.particle_counts.append(particle_count)
         self.target_currents.append(target_current)
         
         self.additional_info = f"Particles: {particle_count}, Current: {target_current}, Voltage: {self.voltage}, Pressure: {self.pressure}"
         return True  # Update happened
     
-    @staticmethod
-    def read_particle_count(path: str):
-        N = 0
-        with h5py.File(path, 'r') as f:
-            l = len(list(f['ions']))
-            for i in range(l):
-                N += len(list(f['ions'][f'pGrp{i}']['ptcls']))
-        return N
-    
-        
-    def read_particles_as_matrix(self, particle_name: str) -> np.ndarray:
-        """Reads particle data from an HDF5 file and returns it as an N × 5 NumPy matrix.
-        
-        Args:
-            file_path (str): Path to the HDF5 file.
-            particle_name (str): The key under which particle data is stored.
-
-        Returns:
-            np.ndarray: An N × 5 matrix containing all particle data.
-        """
+    def read_particles_as_matrix(self, particle_name: str):
         try:
             with h5py.File(self.file_path, 'r') as f:
                 if particle_name not in f:
-                    print(f"Warning: '{particle_name}' not found in {self.file_path}")
-                    return np.empty((5, 0))  # Return an empty N×5 array if not found
+                    return np.empty((5, 0))
                 
-                data_list = []  # List to store N×5 matrices
-                
+                data_list = []
                 for group_name in f[particle_name].keys():
                     group = f[particle_name][group_name]
                     if 'ptcls' in group:
-                        data = group['ptcls'][()]  # Read as NumPy array
-                        print(data.shape, data.shape[0], data.shape[1])
-                        if data.shape[1] == 5:  # Ensure correct format
-                            data_list.append(data)  # Keep as is (N × 5)
-                        else:
-                            print(f"Warning: Skipping {group_name} due to incorrect shape {data.shape}")
+                        data = group['ptcls'][()]
+                        if data.shape[1] == 5:
+                            data_list.append(data)
                 
                 if data_list:
-                    self.particle_data = np.vstack(data_list).T  # Concatenate along rows to get N × 5
+                    self.particle_data = np.vstack(data_list).T
                 else:
-                    self.particle_data = np.empty((5, 0))  # Return empty matrix if no valid data found
-        except (OSError, KeyError, ValueError) as e:
-            print(f"Error reading {self.file_path}: {e}")
-            self.particle_data = np.empty((5, 0))  # Return empty matrix in case of errors
-
+                    self.particle_data = np.empty((5, 0))
+        except (OSError, KeyError, ValueError):
+            self.particle_data = np.empty((5, 0))
     
-    def update_target_current(self, threshold:float=1e-3):
-        
+    def update_target_current(self, threshold: float = 1e-3):
         mask = self.particle_data[0] < threshold
-        current = np.sum(self.particle_data[3][mask])
-        return current
+        return np.sum(self.particle_data[3][mask])
+
     
     def update_temperature(self):
         # Implement logic to calculate temperature
