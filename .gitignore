@@ -174,3 +174,4 @@ cython_debug/
 test_launch.py
 
 dump/
+input/

@@ -21,14 +21,18 @@ class ProcessData:
         self.last_modified = 0
         self.particle_data = np.empty((5, 0))
 
+        self.test_command = 'C:/Users/Dima/anaconda3/python.exe test_launch.py'
+
     def cmdStartH5(self, thread):
-        cmd = f'oopicpro -i {self.input_file_path}{thread}.inp -nox -h5 -od {self.dump_file_path}/{thread}' 
+        cmd = f'oopicpro -i {self.input_file_path}.inp -nox -h5 -od {self.dump_file_path}' 
         return cmd
     
     def cmdH5(self, cycl, thread):
         cmd = f'oopicpro -i {self.input_file_path}{thread}.inp -nox -s {cycl} -h5 -or -d dump/bin/{thread} -sf dump/h5/{thread} -dp {cycl}' 
         return cmd
     
+    def init_process(self):
+        os.system(self.cmdStartH5())
 
     def start_process(self):
         """Launch the simulation process in a separate thread."""
@@ -40,7 +44,14 @@ class ProcessData:
         self.ready_for_launch = False  # Mark as running
         
         def run_simulation():
-            self.process = subprocess.Popen(self.command, shell=True)
+            print(f"Starting process {self.process_id}...")
+            try:
+                self.process = subprocess.Popen(self.test_command, shell=True)
+            except:
+                print(f"Error starting process {self.process_id}.")
+                self.process_finished = True
+                return
+            print(f"Process {self.process_id} started.")
             self.process.wait()  # Block until process finishes
             self.update_from_file()  # Update data after process finishes
             self.process_finished = True  # Mark process as completed
@@ -60,24 +71,25 @@ class ProcessData:
             return False  # Process is still running, wait before updating
         
         modified_time = os.path.getmtime(self.dump_file_path)
-        if modified_time == self.last_modified:
-            return False  # No changes detected, skip update
+        #if modified_time == self.last_modified:
+        #    return False  # No changes detected, skip update
         
         self.last_modified = modified_time
         self.read_particles_as_matrix("ions")
         particle_count = self.particle_data.shape[1]
-        target_current = self.update_target_current()
+        target_current = self.update_target_current(threshold=1)
         
-        self.time_steps.append(len(self.time_steps))
+        self.time_steps.append(len(self.time_steps)*1e-6)
         self.particle_counts.append(particle_count)
         self.target_currents.append(target_current)
+        print(f"Process {self.process_id} updated with {particle_count} particles and {target_current} current.")
         
         self.additional_info = f"Particles: {particle_count}, Current: {target_current}, Voltage: {self.voltage}, Pressure: {self.pressure}"
         return True  # Update happened
     
     def read_particles_as_matrix(self, particle_name: str):
         try:
-            with h5py.File(self.dump_file_path + '/1.h5', 'r') as f:
+            with h5py.File(self.dump_file_path, 'r') as f:
                 if particle_name not in f:
                     return np.empty((5, 0))
                 
