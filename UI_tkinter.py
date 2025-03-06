@@ -35,9 +35,9 @@ class ProcessFrame:
         self.canvas = FigureCanvasTkAgg(self.fig, self.frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        self.fig.patch.set_facecolor("#2e2e2e")  # Dark gray figure background
-        self.ax1.set_facecolor("#3e3e3e")  # Darker gray plot background
-        self.ax2.set_facecolor("#3e3e3e")
+        self.fig.patch.set_facecolor(DARK_THEME['frame_bg'])  # Dark gray figure background
+        self.ax1.set_facecolor(DARK_THEME["bg"])  # Darker gray plot background
+        self.ax2.set_facecolor(DARK_THEME["bg"])  # Darker gray plot background
 
         
     
@@ -50,17 +50,18 @@ class ProcessFrame:
 
         self.ax1.set_xlim(0, 20e-6)
         self.ax1.set_xlabel("Simulation Time", color='white')
-        self.ax1.set_ylabel("Particle Count", color='blue')
+        self.ax1.set_ylabel("Particle Count", color='white')
         self.ax1.legend(loc="upper left")
         #self.ax2.set_ylabel("Target Current", color='red', labelpad=15)
         self.ax2.legend(loc="upper right")
         self.ax1.tick_params(axis='y', labelcolor='white')
         self.ax2.tick_params(axis='y', labelcolor='white')
         self.ax1.tick_params(axis='x', labelcolor='white')
-        self.ax1.spines['bottom'].set_color('white')
-        self.ax1.spines['left'].set_color('white')
+        self.ax2.spines['bottom'].set_color('white')
+        self.ax2.spines['top'].set_color('white')
         self.ax2.spines['right'].set_color('white')
-        
+        self.ax2.spines['left'].set_color('white')
+
         self.fig.tight_layout()  # Ensure labels fit without overlapping
         self.canvas.draw()
 
@@ -81,24 +82,24 @@ class TitleScreen:
         ttk.Label(root, text="Number of Processes:").pack()
         self.num_processes_entry = ttk.Entry(root)
         self.num_processes_entry.insert(0, str(NUM_PROCESSES))
-        self.num_processes_entry.pack()
+        self.num_processes_entry.pack(pady=15)
 
         self.process_settings_frame = ttk.Frame(root)
         self.process_settings_frame.pack()
 
-        ttk.Button(root, text="Set Processes", command=self.create_process_fields).pack()
+        self.set_process_count_button = ttk.Button(root, text="Set Processes", command=self.create_process_fields)
+        self.set_process_count_button.pack()
 
         # Extra features
-        ttk.Button(root, text="Add Parameter Column", command=self.add_param_column).pack()
-        ttk.Button(root, text="Autofill Parameters", command=self.autofill_parameters).pack()
+        
 
         self.process_settings = []
         self.extra_param_labels = []  # Store extra column labels
         self.extra_param_entries = []  # Store extra entry widgets
         self.start_callback = start_callback
 
-        ttk.Button(root, text="Read from File", command=self.load_from_file).pack()
-        ttk.Button(root, text="Start", command=self.start_dashboard).pack()
+        #ttk.Button(root, text="Read from File", command=self.load_from_file).pack()
+        
 
     def create_process_fields(self):
         """Creates entry fields for each process."""
@@ -109,27 +110,34 @@ class TitleScreen:
         num_processes = int(self.num_processes_entry.get())
 
         # Header row
-        ttk.Label(self.process_settings_frame, text="Start Voltage").grid(row=0, column=0)
+        ttk.Label(self.process_settings_frame, text="Start Voltage").grid(row=0, column=0, pady=5, padx=5)
         self.start_voltage_entry = ttk.Entry(self.process_settings_frame)
         self.start_voltage_entry.grid(row=0, column=1)
 
-        ttk.Label(self.process_settings_frame, text="Step Voltage").grid(row=0, column=2)
+        ttk.Label(self.process_settings_frame, text="Step Voltage").grid(row=1, column=0, pady=5, padx=5)
         self.step_voltage_entry = ttk.Entry(self.process_settings_frame)
-        self.step_voltage_entry.grid(row=0, column=3)
+        self.step_voltage_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        ttk.Label(self.process_settings_frame, text="Pressure").grid(row=0, column=4)
+        ttk.Label(self.process_settings_frame, text="Pressure").grid(row=1, column=4)
 
         # Input rows
         for i in range(num_processes):
             voltage_entry = ttk.Entry(self.process_settings_frame)
             pressure_entry = ttk.Entry(self.process_settings_frame)
+            process_label = ttk.Label(self.process_settings_frame, text=f"Process {i+1}")
 
-            voltage_entry.grid(row=i+1, column=1)
-            pressure_entry.grid(row=i+1, column=4)
+            process_label.grid(row=i+2, column=0, pady=5, padx=5)
+            voltage_entry.grid(row=i+2, column=1, pady=5, padx=5)
+            pressure_entry.grid(row=i+2, column=4, pady=5, padx=5)
+
 
             self.process_settings.append((voltage_entry, pressure_entry))
 
-        self.apply_voltage_step()  # Auto-fill voltage
+        self.set_process_count_button.destroy()
+
+        ttk.Button(root, text="Add Parameter Column", command=self.add_param_column).pack(pady=5)
+        ttk.Button(root, text="Autofill Parameters", command=self.autofill_parameters).pack(pady=5)
+        ttk.Button(root, text="Start", command=self.start_dashboard).pack(pady=5)
 
     def apply_voltage_step(self):
         """Auto-fills voltage values based on start and step voltage."""
