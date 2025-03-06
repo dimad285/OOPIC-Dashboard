@@ -1,12 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
-import h5py
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import subprocess
-import threading
-import os
-import numpy as np
+import ProcessData
 
 NUM_PROCESSES = 3  # Default number of simulated processes
 COLS = 4  # Number of columns in the grid layout
@@ -17,98 +13,7 @@ DARK_THEME = {"bg": "#2e2e2e", "fg": "#ffffff", "frame_bg": "#3e3e3e", "frame_fg
 CURRENT_THEME = DARK_THEME  # Change to LIGHT_THEME for a light mode
 
     
-import subprocess
-import threading
-import os
-import h5py
-import numpy as np
 
-class ProcessData:
-    def __init__(self, process_id, file_path, command):
-        self.process_id = process_id
-        self.file_path = file_path
-        self.command = command  # Command to run the simulation
-        self.process = None  # Store the running process
-        self.time_steps = []
-        self.particle_counts = []
-        self.target_currents = []
-        self.voltage = 0.0
-        self.pressure = 0.0
-        self.additional_info = "Initializing..."
-        self.last_modified = 0
-        self.particle_data = np.empty((5, 0))
-    
-    def start_process(self):
-        """Launch the simulation process in a separate thread."""
-        def run_simulation():
-            self.process = subprocess.Popen(self.command, shell=True)
-            self.process.wait()  # Block until process finishes
-            print(f"Process {self.process_id} finished.")
-
-        thread = threading.Thread(target=run_simulation)
-        thread.start()
-    
-    def update_from_file(self):
-        """Check if the HDF5 file has new data and update attributes."""
-        if not os.path.exists(self.file_path):
-            return False  # File does not exist, no update needed
-        
-        if self.process and self.process.poll() is None:
-            return False  # Process is still running, wait before updating
-        
-        modified_time = os.path.getmtime(self.file_path)
-        if modified_time == self.last_modified:
-            return False  # No changes detected, skip update
-        
-        self.last_modified = modified_time
-        self.read_particles_as_matrix("ions")
-        particle_count = self.particle_data.shape[1]
-        target_current = self.update_target_current()
-        
-        self.time_steps.append(len(self.time_steps))
-        self.particle_counts.append(particle_count)
-        self.target_currents.append(target_current)
-        
-        self.additional_info = f"Particles: {particle_count}, Current: {target_current}, Voltage: {self.voltage}, Pressure: {self.pressure}"
-        return True  # Update happened
-    
-    def read_particles_as_matrix(self, particle_name: str):
-        try:
-            with h5py.File(self.file_path, 'r') as f:
-                if particle_name not in f:
-                    return np.empty((5, 0))
-                
-                data_list = []
-                for group_name in f[particle_name].keys():
-                    group = f[particle_name][group_name]
-                    if 'ptcls' in group:
-                        data = group['ptcls'][()]
-                        if data.shape[1] == 5:
-                            data_list.append(data)
-                
-                if data_list:
-                    self.particle_data = np.vstack(data_list).T
-                else:
-                    self.particle_data = np.empty((5, 0))
-        except (OSError, KeyError, ValueError):
-            self.particle_data = np.empty((5, 0))
-    
-    def update_target_current(self, threshold: float = 1e-3):
-        mask = self.particle_data[0] < threshold
-        return np.sum(self.particle_data[3][mask])
-
-    
-    def update_temperature(self):
-        # Implement logic to calculate temperature
-        return 0.0
-    
-    def update_density(self):
-        # Implement logic to calculate density
-        return 0.0
-    
-    def update_debye_length(self):
-        # Implement logic to calculate Debye length
-        return 0.0
 
 
 class ProcessFrame:
@@ -240,13 +145,15 @@ class DashboardApp:
     def update_data(self):
         if not self.root.winfo_exists():  # Check if window still exists
             return
-        updated = False
         for i, process in enumerate(self.processes):
-            if process.update_from_file():
+            if process.finished:
                 self.frames[i].update_plot(process.time_steps, process.particle_counts, process.target_currents, process.additional_info)
-                updated = True
+                process.finished = False
+                process.ready_for_launch = True
+            elif process.ready_for_launch:
+                process.start_process()
         
-        self.root.after(500 if updated else 2000, self.update_data)
+        self.root.after(1000, self.update_data)
 
 if __name__ == "__main__":
     root = tk.Tk()
