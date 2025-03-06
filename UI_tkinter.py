@@ -34,21 +34,33 @@ class ProcessFrame:
         self.ax2 = self.ax1.twinx()
         self.canvas = FigureCanvasTkAgg(self.fig, self.frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        self.fig.patch.set_facecolor("#2e2e2e")  # Dark gray figure background
+        self.ax1.set_facecolor("#3e3e3e")  # Darker gray plot background
+        self.ax2.set_facecolor("#3e3e3e")
+
+        
     
     def update_plot(self, process: ProcessData.ProcessData):
         self.ax1.clear()
+        self.ax2.clear()
+
         self.ax1.plot(process.time_steps, process.particle_counts, label="Particle Count", color='blue')
-        self.ax1.set_xlabel("Simulation Time")
-        self.ax1.set_ylabel("Particle Count", color='blue')
-        self.ax1.legend(loc="upper left")
+        self.ax2.plot(process.time_steps, process.target_currents, label="Target Current", color='red')
 
         self.ax1.set_xlim(0, 20e-6)
-        
-        self.ax2.clear()
-        self.ax2.plot(process.time_steps, process.target_currents, label="Target Current", color='red')
+        self.ax1.set_xlabel("Simulation Time", color='white')
+        self.ax1.set_ylabel("Particle Count", color='blue')
+        self.ax1.legend(loc="upper left")
         #self.ax2.set_ylabel("Target Current", color='red', labelpad=15)
         self.ax2.legend(loc="upper right")
-
+        self.ax1.tick_params(axis='y', labelcolor='white')
+        self.ax2.tick_params(axis='y', labelcolor='white')
+        self.ax1.tick_params(axis='x', labelcolor='white')
+        self.ax1.spines['bottom'].set_color('white')
+        self.ax1.spines['left'].set_color('white')
+        self.ax2.spines['right'].set_color('white')
+        
         self.fig.tight_layout()  # Ensure labels fit without overlapping
         self.canvas.draw()
 
