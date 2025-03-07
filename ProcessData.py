@@ -3,6 +3,7 @@ import subprocess
 import threading
 import os
 import numpy as np
+import parser
 
 class ProcessData:
     def __init__(self, process_id, input_file_path, dump_file_path):
@@ -20,6 +21,17 @@ class ProcessData:
         self.additional_info = "Initializing..."
         self.last_modified = 0
         self.particle_data = np.empty((5, 0))
+        self.mp = 1.6726219e-27  # Mass of hydrogen
+        self.qe = 1.60217662e-19  # Elementary charge
+        self.me = 9.10938356e-31  # Mass of electron
+        self.A = 1.0  # Atomic number of hydrogen
+        self.kb = 1.38064852e-23  # Boltzmann constant
+        self.e0 = 8.85418782e-12  # Vacuum permittivity
+
+        self.m = 0
+        self.n = 0
+        self.z = 0
+        self.r = 0
 
         self.test_command = 'C:/Users/Dima/anaconda3/python.exe test_launch.py'
 
@@ -110,7 +122,7 @@ class ProcessData:
     
     def update_target_current(self, threshold: float = 1e-3):
         mask = self.particle_data[0] < threshold
-        return np.sum(self.particle_data[3][mask])
+        return np.sum(self.particle_data[3][mask]) * self.qe / threshold
 
 
     def update_species_properties(self):
@@ -118,21 +130,46 @@ class ProcessData:
         return 0.0
     
     def update_temperature(self):
-        # Implement logic to calculate temperature
-        return 0.0
+        v = self.particle_data[2:, :]
+        e_mean = np.mean(np.sum(v**2, axis=0)) * self.mp * self.A
+        return 2 * e_mean / (3 * self.kb)
     
-    def update_density(self):
-        # Implement logic to calculate density
-        return 0.0
+    def compute_spatial_distribution(self):
+        """Compute local temperature and density on a 2D grid"""
+        x, y = self.particle_data[:2]  # Extract positions
+        vx, vy, vz = self.particle_data[2:]
+
+        # Define grid
+        x_bins = np.linspace(np.min(x), np.max(x), self.m + 1)
+        y_bins = np.linspace(np.min(y), np.max(y), self.n + 1)
+        
+        local_temperature = np.zeros((self.m, self.n))
+        local_density = np.zeros((self.m, self.n))
+        particle_counts = np.zeros((self.m, self.n))
+
+        # Assign particles to grid cells
+        x_indices = np.digitize(x, x_bins) - 1
+        y_indices = np.digitize(y, y_bins) - 1
+        
+        for i in range(self.particle_data.shape[1]):
+            xi, yi = x_indices[i], y_indices[i]
+            if 0 <= xi < self.m and 0 <= yi < self.n:
+                kinetic_energy = 0.5 * self.mp * self.A * (vx[i]**2 + vy[i]**2 + vz[i]**2)
+                local_temperature[xi, yi] += kinetic_energy
+                local_density[xi, yi] += 1
+                particle_counts[xi, yi] += 1
+        
+        # Normalize
+        local_temperature /= (3 * self.kb * np.maximum(particle_counts, 1))
+        local_density /= self.x * self.y / (self.m * self.n)
+        local_debye_length = np.sqrt(self.e0 * self.kb * local_temperature / (local_density * self.qe**2))
+        
+        return local_temperature, local_density, local_debye_length
     
-    def update_debye_length(self):
-        # Implement logic to calculate Debye length
-        return 0.0
-    
-    def read_input_file(self):
+    def read_input_file(self, param_list):
         # Implement logic to read input file
         return None
     
-    def change_input_file(self):
+    def change_input_file(self, param_list):
         # Implement logic to change input file
         return None

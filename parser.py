@@ -1,5 +1,31 @@
 import re
 
+def read_parameters(file_path, param_list):
+    """
+    Read specified parameters from a structured text file.
+
+    :param file_path: Path to the input file.
+    :param param_list: List of parameter names to read.
+    :return: Dictionary of parameter names and their values.
+    """
+    param_values = {}
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            match = re.match(r'(\s*)(\w+)\s*=\s*([^/\n]+)', line)
+            if match:
+                _, key, value = match.groups()
+                key = key.strip()
+                value = value.strip()
+                if key in param_list:
+                    try:
+                        param_values[key] = eval(value)  # Convert to int/float if possible
+                    except:
+                        param_values[key] = value  # Keep as string if conversion fails
+
+    return param_values
+
+
 def modify_parameters(file_path, output_path, param_updates):
     """
     Modify specified parameters in a structured text file.
