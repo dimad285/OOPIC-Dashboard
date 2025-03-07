@@ -11,7 +11,7 @@ COLS = 4  # Number of columns in the grid layout
 LIGHT_THEME = {"bg": "#f0f0f0", "fg": "#000000", "frame_bg": "#ffffff", "frame_fg": "#000000"}
 DARK_THEME = {"bg": "#2e2e2e", "fg": "#ffffff", "frame_bg": "#3e3e3e", "frame_fg": "#ffffff"}
 CURRENT_THEME = DARK_THEME  # Change to LIGHT_THEME for a light mode
-
+INPUT_SYMBOLS = {'voltage': 'V', 'pressure': 'P'}
     
 
 
@@ -35,9 +35,9 @@ class ProcessFrame:
         self.canvas = FigureCanvasTkAgg(self.fig, self.frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        self.fig.patch.set_facecolor(DARK_THEME['frame_bg'])  # Dark gray figure background
-        self.ax1.set_facecolor(DARK_THEME["bg"])  # Darker gray plot background
-        self.ax2.set_facecolor(DARK_THEME["bg"])  # Darker gray plot background
+        self.fig.patch.set_facecolor(CURRENT_THEME['frame_bg'])  # Dark gray figure background
+        self.ax1.set_facecolor(CURRENT_THEME["bg"])  # Darker gray plot background
+        self.ax2.set_facecolor(CURRENT_THEME["bg"])  # Darker gray plot background
 
         
     
@@ -78,8 +78,9 @@ class TitleScreen:
     def __init__(self, root, start_callback):
         self.root = root
         self.root.title("PIC Simulation Setup")
+        self.root.configure(bg=CURRENT_THEME["bg"])
 
-        ttk.Label(root, text="Number of Processes:").pack()
+        ttk.Label(root, text="Number of Processes:", style="TLabel").pack()
         self.num_processes_entry = ttk.Entry(root)
         self.num_processes_entry.insert(0, str(NUM_PROCESSES))
         self.num_processes_entry.pack(pady=15)
@@ -87,7 +88,7 @@ class TitleScreen:
         self.process_settings_frame = ttk.Frame(root)
         self.process_settings_frame.pack()
 
-        self.set_process_count_button = ttk.Button(root, text="Set Processes", command=self.create_process_fields)
+        self.set_process_count_button = tk.Button(root, text="Set Processes", command=self.create_process_fields, bg=CURRENT_THEME["frame_bg"], fg=CURRENT_THEME["fg"])
         self.set_process_count_button.pack()
 
         # Extra features
@@ -156,7 +157,7 @@ class TitleScreen:
 
         # Create a frame for the label + rename button
         param_frame = ttk.Frame(self.process_settings_frame)
-        param_frame.grid(row=0, column=col_index, padx=5)
+        param_frame.grid(row=1, column=col_index, padx=5)
 
         label = ttk.Label(param_frame, text=f"Param {col_index-4}")
         label.pack(side=tk.LEFT)
@@ -169,7 +170,7 @@ class TitleScreen:
         new_entries = []
         for i in range(len(self.process_settings)):
             entry = ttk.Entry(self.process_settings_frame)
-            entry.grid(row=i+1, column=col_index)
+            entry.grid(row=i+2, column=col_index)
             new_entries.append(entry)
 
         self.extra_param_entries.append(new_entries)
@@ -233,8 +234,7 @@ class DashboardApp:
         self.root.title("PIC Simulation Dashboard")
         self.root.configure(bg=CURRENT_THEME["bg"])
         
-        style = ttk.Style()
-        style.configure("Process.TFrame", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"])
+        
         
         self.processes = [ProcessData.ProcessData(i, f"input/input.txt", f"dump/1.h5") for i in range(NUM_PROCESSES)]
         for i, (voltage, pressure) in enumerate(voltage_pressure_data):
@@ -274,12 +274,19 @@ class DashboardApp:
         self.root.after(1000, self.update_data)
 
 if __name__ == "__main__":
+    
     root = tk.Tk()
+    style = ttk.Style()
+    style.configure("Process.TFrame", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"])
+    style.configure("TButton", background=CURRENT_THEME["bg"])
+    style.configure("TLabel", background=CURRENT_THEME["bg"], foreground=CURRENT_THEME["frame_fg"])
     root.option_add('*tearOff', False)
     menubar = tk.Menu(root)
+    menubar.configure(bg=CURRENT_THEME["bg"], fg=CURRENT_THEME["fg"])
     menu_tools = tk.Menu(menubar)
     menubar.add_cascade(label='Tools', menu=menu_tools)
     menu_tools.add_command(label='Settings')
     root['menu'] = menubar
     TitleScreen(root, lambda data: DashboardApp(tk.Tk(), data))
     root.mainloop()
+
