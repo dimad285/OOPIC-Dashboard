@@ -35,7 +35,7 @@ class ProcessData:
 
         self.test_command = 'C:/Users/Dima/anaconda3/python.exe test_launch.py'
 
-    def cmdStartH5(self, thread):
+    def cmdStartH5(self):
         cmd = f'oopicpro -i {self.input_file_path}.inp -nox -h5 -od {self.dump_file_path}' 
         return cmd
     
@@ -45,6 +45,18 @@ class ProcessData:
     
     def init_process(self):
         os.system(self.cmdStartH5())
+        read_list = ['J', 'K', 'Z', 'R', 'A']
+        input_params = parser.read_parameters(self.input_file_path, read_list)
+        if 'J' in input_params:
+            self.m = input_params['J']
+        if 'K' in input_params:
+            self.n = input_params['K']
+        if 'Z' in input_params:
+            self.z = input_params['Z']
+        if 'R' in input_params:
+            self.r = input_params['R']
+        if 'A' in input_params:
+            self.A = input_params['A']
 
     def start_process(self):
         """Launch the simulation process in a separate thread."""

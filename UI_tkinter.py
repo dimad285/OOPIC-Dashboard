@@ -3,6 +3,7 @@ from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ProcessData
+import shutil
 
 NUM_PROCESSES = 3  # Default number of simulated processes
 COLS = 4  # Number of columns in the grid layout
@@ -10,7 +11,7 @@ COLS = 4  # Number of columns in the grid layout
 # Define color themes
 LIGHT_THEME = {"bg": "#f0f0f0", "fg": "#000000", "frame_bg": "#ffffff", "frame_fg": "#000000"}
 DARK_THEME = {"bg": "#2e2e2e", "fg": "#ffffff", "frame_bg": "#3e3e3e", "frame_fg": "#ffffff"}
-CURRENT_THEME = DARK_THEME  # Change to LIGHT_THEME for a light mode
+CURRENT_THEME = LIGHT_THEME  # Change to LIGHT_THEME for a light mode
 INPUT_SYMBOLS = {'voltage': 'V', 'pressure': 'P'}
     
 
@@ -19,12 +20,12 @@ INPUT_SYMBOLS = {'voltage': 'V', 'pressure': 'P'}
 class ProcessFrame:
     def __init__(self, parent, font_size:int, process_id):
         self.process_id = process_id
-        self.frame = ttk.LabelFrame(parent, text=f"Process {process_id+1}", padding=10)
-        self.frame.configure(style="Process.TFrame")
+        self.frame = ttk.LabelFrame(parent, text=f"Process {process_id+1}", padding=10,)
+        self.frame.configure(style="TFrame")
         
-        self.info_label_voltage = ttk.Label(self.frame, text="voltage: 0", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"],
+        self.info_label_voltage = ttk.Label(self.frame, text="voltage: 0",
                                             font=("Arial", font_size))
-        self.info_label_pressure = ttk.Label(self.frame,  text="pressure: 0", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"],
+        self.info_label_pressure = ttk.Label(self.frame,  text="pressure: 0",
                                             font=("Arial", font_size))
         self.info_label_voltage.pack()
         self.info_label_pressure.pack()
@@ -49,14 +50,14 @@ class ProcessFrame:
         self.ax2.plot(process.time_steps, process.target_currents, label="Target Current", color='red')
 
         self.ax1.set_xlim(0, 20e-6)
-        self.ax1.set_xlabel("Simulation Time", color='white')
-        self.ax1.set_ylabel("Particle Count", color='white')
+        self.ax1.set_xlabel("Simulation Time", color=CURRENT_THEME["fg"])
+        self.ax1.set_ylabel("Particle Count", color=CURRENT_THEME["fg"])
         self.ax1.legend(loc="upper left")
         #self.ax2.set_ylabel("Target Current", color='red', labelpad=15)
         self.ax2.legend(loc="upper right")
-        self.ax1.tick_params(axis='y', labelcolor='white')
-        self.ax2.tick_params(axis='y', labelcolor='white')
-        self.ax1.tick_params(axis='x', labelcolor='white')
+        self.ax1.tick_params(axis='y', labelcolor=CURRENT_THEME["fg"])
+        self.ax2.tick_params(axis='y', labelcolor=CURRENT_THEME["fg"])
+        self.ax1.tick_params(axis='x', labelcolor=CURRENT_THEME["fg"])
         self.ax2.spines['bottom'].set_color('white')
         self.ax2.spines['top'].set_color('white')
         self.ax2.spines['right'].set_color('white')
@@ -235,15 +236,15 @@ class DashboardApp:
         self.root.configure(bg=CURRENT_THEME["bg"])
         
         
-        
-        self.processes = [ProcessData.ProcessData(i, f"input/input.txt", f"dump/1.h5") for i in range(NUM_PROCESSES)]
+        self.create_input_files()
+        self.processes = [ProcessData.ProcessData(i, f"input/input_{i}.inp", f"dump/1.h5") for i in range(NUM_PROCESSES)]
         for i, (voltage, pressure) in enumerate(voltage_pressure_data):
             self.processes[i].voltage = voltage
             self.processes[i].pressure = pressure
         
         self.frames = []
         self.create_frames()
-        #self.init_processes()
+        self.init_processes()
         self.update_data()
     
     def create_frames(self):
@@ -260,6 +261,10 @@ class DashboardApp:
         for process in self.processes:
             process.init_process()
     
+    def create_input_files(self):
+        for i in range(NUM_PROCESSES):
+            shutil.copyfile("input/input.inp", f"input/input_{i}.inp")
+
     def update_data(self):
         if not self.root.winfo_exists():  # Check if window still exists
             return
@@ -277,7 +282,10 @@ if __name__ == "__main__":
     
     root = tk.Tk()
     style = ttk.Style()
-    style.configure("Process.TFrame", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"])
+    #style.configure("Process.TFrame", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"])
+    #style.configure("TLabelFrame", background=CURRENT_THEME["frame_bg"], foreground=CURRENT_THEME["frame_fg"])
+    style.configure("TFrame", background=CURRENT_THEME["bg"])
+    style.configure("TEntry", background=CURRENT_THEME["frame_bg"])
     style.configure("TButton", background=CURRENT_THEME["bg"])
     style.configure("TLabel", background=CURRENT_THEME["bg"], foreground=CURRENT_THEME["frame_fg"])
     root.option_add('*tearOff', False)
