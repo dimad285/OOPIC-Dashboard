@@ -193,7 +193,12 @@ def get_debye_length(particle_data):
 
     pass
 
-def distribution_function(particle_data, cell_indicies, X, Y, m, n):
+def distribution_function_E(particle_data, cell_indicies, X, Y, m, n):
+
+    pass
+
+
+def distribution_function_V(particle_data, cell_indicies, X, Y, m, n):
 
     pass
 
