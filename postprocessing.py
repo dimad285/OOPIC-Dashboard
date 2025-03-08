@@ -191,9 +191,23 @@ def get_plasma_density(numerical_density, q):
 
 
 
-def get_debye_length(particle_data):
+def get_debye_length(ne, ni, Te, Ti):
 
-    pass
+    a = e0 * kb / qe**2
+    mask_te = Te == 0
+    mask_ti = Ti == 0
+    te = Te
+    ti = Ti
+    te[mask_te] = 1
+    ti[mask_ti] = 1
+
+    c = ne/te
+    d = ni/ti
+    b = (c + d)
+
+    l_sq = a / b
+
+    return np.sqrt(l_sq)
 
 def distribution_function_E(particle_data, cell_indicies, X, Y, m, n):
 
@@ -204,12 +218,16 @@ def distribution_function_V(particle_data, cell_indicies, X, Y, m, n):
 
     pass
 
+def vlasov_distribution():
+    
+    pass
 
 
 class PlotApp:
     def __init__(self, root, file_path, m, n, z, r, bins, boltzman = False):
         self.root = root
         self.root.title("Plot Selector")
+        #self.root.configure(bg='#24292e')
         self.dump_file = file_path
         self.m = m
         self.n = n
@@ -227,7 +245,8 @@ class PlotApp:
         "ne_surface", "ni_surface", 
         "rhoe_surface", "rhoi_surface",
         "e_velocity_distribution", "i_velocity_distribution",
-        "e_energy_distribution", "i_energy_distribution"
+        "e_energy_distribution", "i_energy_distribution",
+        "debye_heatmap", "debye_surface"
         ]
         self.selected_plot = tk.StringVar(value=self.plot_types[0])
 
@@ -240,6 +259,7 @@ class PlotApp:
         self.fig, self.ax = plt.subplots(figsize=(5, 4))
         self.canvas = FigureCanvasTkAgg(self.fig, master=root)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        #self.fig.set_facecolor('#24292e')
 
         self.get_data()
         # Initial plot
@@ -267,6 +287,7 @@ class PlotApp:
         self.rho_e = get_plasma_density(self.Ne, qe)
         self.Ti = get_temperature_distribution(self.particle_data_i, self.cells_i, self.m, self.n, mp)
         self.Te = get_temperature_distribution(self.particle_data_e, self.cells_e, self.m, self.n, me)
+        self.dl = get_debye_length(self.Ne, self.Ni, self.Te, self.Ti)
 
 
     def update_plot(self, event=None):
@@ -299,29 +320,31 @@ class PlotApp:
                 self.fig.colorbar(im, ax=self.ax, label="Temperature (K)")
                 
             elif plot_type == "ne_heatmap":
-                im = self.ax.pcolormesh(Z, R, self.Ne.T, cmap="viridis", shading='auto')
+                im = self.ax.pcolormesh(Z, R, self.Ne.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Electron Number Density")
                 self.fig.colorbar(im, ax=self.ax, label="Particles/m³")
                 
             elif plot_type == "ni_heatmap":
-                im = self.ax.pcolormesh(Z, R, self.Ni.T, cmap="viridis", shading='auto')
+                im = self.ax.pcolormesh(Z, R, self.Ni.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Ion Number Density")
                 self.fig.colorbar(im, ax=self.ax, label="Particles/m³")
                 
             elif plot_type == "rhoe_heatmap":
-                im = self.ax.pcolormesh(Z, R, self.rho_e.T, cmap="RdBu", shading='auto', 
-                                    norm=plt.Normalize(vmin=-np.max(abs(self.rho_e)), 
-                                                        vmax=np.max(abs(self.rho_e))))
+                im = self.ax.pcolormesh(Z, R, self.rho_e.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Electron Charge Density")
                 self.fig.colorbar(im, ax=self.ax, label="C/m³")
                 
             elif plot_type == "rhoi_heatmap":
-                im = self.ax.pcolormesh(Z, R, self.rho_i.T, cmap="RdBu", shading='auto',
-                                    norm=plt.Normalize(vmin=-np.max(abs(self.rho_i)), 
-                                                        vmax=np.max(abs(self.rho_i))))
+                im = self.ax.pcolormesh(Z, R, self.rho_i.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Ion Charge Density")
                 self.fig.colorbar(im, ax=self.ax, label="C/m³")
-            
+
+            elif plot_type == "debye_heatmap":
+                im = self.ax.pcolormesh(Z, R, self.dl.T, cmap="plasma", shading='auto')
+                self.ax.set_title("Debye Length")
+                self.fig.colorbar(im, ax=self.ax, label="m")
+
+
             # Set common labels for heatmap plots
             self.ax.set_xlabel("Z (m)")
             self.ax.set_ylabel("R (m)")
@@ -349,14 +372,14 @@ class PlotApp:
                                 label="Temperature (K)")
                 
             elif parameter_name == "ne":
-                surf = self.ax.plot_surface(ZZ, RR, self.Ne.T, cmap="viridis", 
+                surf = self.ax.plot_surface(ZZ, RR, self.Ne.T, cmap="plasma", 
                                         edgecolor='none', alpha=0.8)
                 self.ax.set_title("Electron Number Density")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
                                 label="Particles/m³")
                 
             elif parameter_name == "ni":
-                surf = self.ax.plot_surface(ZZ, RR, self.Ni.T, cmap="viridis", 
+                surf = self.ax.plot_surface(ZZ, RR, self.Ni.T, cmap="plasma", 
                                         edgecolor='none', alpha=0.8)
                 self.ax.set_title("Ion Number Density")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
@@ -366,8 +389,7 @@ class PlotApp:
                 # For charge density, we need to be careful with the colormap
                 norm = plt.Normalize(vmin=-np.max(abs(self.rho_e)), 
                                     vmax=np.max(abs(self.rho_e)))
-                surf = self.ax.plot_surface(ZZ, RR, self.rho_e.T, cmap="RdBu", 
-                                        norm=norm, edgecolor='none', alpha=0.8)
+                surf = self.ax.plot_surface(ZZ, RR, self.rho_e.T, cmap="plasma")
                 self.ax.set_title("Electron Charge Density")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
                                 label="C/m³")
@@ -375,11 +397,18 @@ class PlotApp:
             elif parameter_name == "rhoi":
                 norm = plt.Normalize(vmin=-np.max(abs(self.rho_i)), 
                                     vmax=np.max(abs(self.rho_i)))
-                surf = self.ax.plot_surface(ZZ, RR, self.rho_i.T, cmap="RdBu", 
-                                        norm=norm, edgecolor='none', alpha=0.8)
+                surf = self.ax.plot_surface(ZZ, RR, self.rho_i.T, cmap="plasma")
                 self.ax.set_title("Ion Charge Density")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
                                 label="C/m³")
+            
+            elif parameter_name == "debye":
+                norm = plt.Normalize(vmin=-np.max(abs(self.rho_i)), 
+                                    vmax=np.max(abs(self.rho_i)))
+                surf = self.ax.plot_surface(ZZ, RR, self.dl.T, cmap="plasma")
+                self.ax.set_title("Debye length")
+                self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
+                                label="m")
             
             # Set common labels for surface plots
             self.ax.set_xlabel("Z (m)")
