@@ -1,11 +1,10 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import Axes3D
 import h5py
-import scipy as sp
 
 kb = 1.38064852e-23  # Boltzmann constant
 qe = -1.60217662e-19  # Elementary charge    
@@ -53,11 +52,11 @@ def get_cell_indicies(particle_data, Z, R, m, n):
     - n: Number of grid points in r-direction.
     '''
 
-    cell_indicies = np.zeros((2, particle_data.shape[1]), dtype=np.int32)
+    cell_indices = np.zeros((2, particle_data.shape[1]), dtype=np.int32)
 
     if particle_data.shape[1] == 0:
         print('0 particles')
-        return cell_indicies
+        return cell_indices
 
     dz = Z / (m - 1)
     dr = R / (n - 1)
@@ -67,10 +66,10 @@ def get_cell_indicies(particle_data, Z, R, m, n):
     y_norm = particle_data[1, :] / dr
 
     # Find the cell index for each particle
-    cell_indicies[0, :] = np.floor(x_norm).astype(int)
-    cell_indicies[1, :] = np.floor(y_norm).astype(int) 
+    cell_indices[0, :] = np.floor(x_norm).astype(int)
+    cell_indices[1, :] = np.floor(y_norm).astype(int) 
 
-    return cell_indicies
+    return cell_indices
 
 
 def get_numerical_density(cell_indices, Z, R, m, n):
@@ -209,22 +208,143 @@ def get_debye_length(ne, ni, Te, Ti):
 
     return np.sqrt(l_sq)
 
-def distribution_function_E(particle_data, cell_indicies, X, Y, m, n):
 
-    pass
+def get_distribution_function_E(particle_data, cell_indices, M, m, n, bins):
 
-
-def distribution_function_V(particle_data, cell_indicies, X, Y, m, n):
-
-    pass
-
-def vlasov_distribution():
+    """
+    Compute velocity distributions in each grid cell.
     
-    pass
+    Parameters:
+    - velocities: np.array of shape (2, n) -> (vx, vy) components of each particle
+    - cell_indices: np.array of shape (2, n) -> (i, j) cell indices where each particle resides
+    - m, n: int -> Number of cells in each axis (grid size)
+    - bins: int -> Number of velocity bins
+    
+    Returns:
+    - v_bins: np.array of shape (bins,) -> Bin centers for velocity magnitude
+    - hist: np.array of shape (m, n, bins) -> Velocity distribution in each cell
+    """
+
+    if particle_data.shape[1] == 0:
+        print('0 particles')
+        return (None, None)
+    
+    v = particle_data[2:, :]
+    # Compute velocity magnitudes
+    v_sq = v[0]**2 + v[1]**2 + v[2]**2
+
+    E = 0.5 * v_sq * M
+
+    # Prepare histogram bins
+    e_min, e_max = 0, np.max(E)
+    e_bins = np.linspace(e_min, e_max, bins+1)
+    bin_centers = 0.5 * (e_bins[:-1] + e_bins[1:])  # Get bin centers
+    
+    # Storage for velocity histograms in each cell
+    hist = np.zeros((m, n, bins))
+
+    # Populate histograms per cell
+    for e, (i, j) in zip(E, cell_indices.T):
+        bin_idx = np.searchsorted(e_bins, e, side="right") - 1  # Find bin index
+        if 0 <= i < m and 0 <= j < n and 0 <= bin_idx < bins:
+            hist[i, j, bin_idx] += 1
+
+    # Normalize each cell histogram to a probability distribution
+    hist /= np.sum(hist, axis=-1, keepdims=True, where=(hist > 0))
+
+    return bin_centers, hist
+
+def get_distribution_function_V(particle_data, cell_indices, m, n, bins):
+
+    """
+    Compute velocity distributions in each grid cell.
+    
+    Parameters:
+    - velocities: np.array of shape (2, n) -> (vx, vy) components of each particle
+    - cell_indices: np.array of shape (2, n) -> (i, j) cell indices where each particle resides
+    - m, n: int -> Number of cells in each axis (grid size)
+    - bins: int -> Number of velocity bins
+    
+    Returns:
+    - v_bins: np.array of shape (bins,) -> Bin centers for velocity magnitude
+    - hist: np.array of shape (m, n, bins) -> Velocity distribution in each cell
+    """
+
+    if particle_data.shape[1] == 0:
+        print('0 particles')
+        return (None, None)
+    
+    v = particle_data[2:, :]
+    # Compute velocity magnitudes
+    v_magnitudes = np.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
+
+    # Prepare histogram bins
+    v_min, v_max = 0, np.max(v_magnitudes)
+    v_bins = np.linspace(v_min, v_max, bins+1)
+    bin_centers = 0.5 * (v_bins[:-1] + v_bins[1:])  # Get bin centers
+    
+    # Storage for velocity histograms in each cell
+    hist = np.zeros((m, n, bins))
+
+    # Populate histograms per cell
+    for v, (i, j) in zip(v_magnitudes, cell_indices.T):
+        bin_idx = np.searchsorted(v_bins, v, side="right") - 1  # Find bin index
+        if 0 <= i < m and 0 <= j < n and 0 <= bin_idx < bins:
+            hist[i, j, bin_idx] += 1
+
+    # Normalize each cell histogram to a probability distribution
+    hist /= np.sum(hist, axis=-1, keepdims=True, where=(hist > 0))
+
+    return bin_centers, hist
+
+
+
+def plot_distribution(ax, v_bins, hist, i, j):
+    """
+    Plots the velocity distribution for a selected cell (i, j).
+
+    Parameters:
+    - v_bins: np.array of shape (bins,) -> Bin centers for velocity magnitude
+    - hist: np.array of shape (m, n, bins) -> Velocity distributions in each cell
+    - i, j: int -> Cell indices to visualize
+    """
+    distribution = hist[i, j]  # Get histogram for selected cell
+
+    ax.plot(v_bins, distribution, marker='o', linestyle='-', label=f'Cell ({i}, {j})')
+    plt.xlabel("Velocity Magnitude")
+    plt.ylabel("Probability Density")
+    plt.title("Velocity Distribution in Cell")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+
+def get_z_distribution(particle_data, Z, bins):
+
+    if particle_data.shape[1] == 0:
+        print('0 particles')
+        return (np.arange(bins), np.zeros(bins))
+    
+    z = particle_data[0:, :]
+    x = np.arange(bins) * Z/bins
+    return (x, np.histogram(z, bins, density=True)[0])
+
+
+def get_r_distribution(particle_data, R, bins):
+
+    if particle_data.shape[1] == 0:
+        print('0 particles')
+        return (np.arange(bins), np.zeros(bins))
+    
+    z = particle_data[1:, :]
+    x = np.arange(bins) * R/bins
+    return (x, np.histogram(z, bins, density=True)[0])
+
 
 
 class PlotApp:
-    def __init__(self, root, file_path, m, n, z, r, bins, boltzman = False):
+    def __init__(self, root, ions_name, file_path, m, n, z, r, bins, boltzman = False):
         self.root = root
         self.root.title("Plot Selector")
         #self.root.configure(bg='#24292e')
@@ -235,6 +355,7 @@ class PlotApp:
         self.r = r
         self.bins = bins
         self.boltzman = boltzman
+        self.ions_name = ions_name
 
         # Dropdown menu
         self.plot_types = [
@@ -246,7 +367,11 @@ class PlotApp:
         "rhoe_surface", "rhoi_surface",
         "e_velocity_distribution", "i_velocity_distribution",
         "e_energy_distribution", "i_energy_distribution",
-        "debye_heatmap", "debye_surface"
+        "debye_heatmap", "debye_surface",
+        "zi_distribution", "ri_distribution",
+        "ze_distribution", "re_distribution",
+        "i_v_grid_distribution", "e_v_grid_distribution",
+        "i_E_grid_distribution", "e_E_grid_distribution"
         ]
         self.selected_plot = tk.StringVar(value=self.plot_types[0])
 
@@ -254,6 +379,19 @@ class PlotApp:
         self.dropdown = ttk.Combobox(root, textvariable=self.selected_plot, values=self.plot_types, state="readonly")
         self.dropdown.pack(pady=5)
         self.dropdown.bind("<<ComboboxSelected>>", self.update_plot)
+
+        ttk.Button(root, text='Open File', command=self.read_file).pack(pady=5)
+        
+        self.z_idx = tk.IntVar(value=0)
+        self.r_idx = tk.IntVar(value=0)
+
+        ttk.Label(root, text="Z Index:").pack(pady=5)
+        self.z_slider = ttk.Scale(root, from_=0, to=m-1, variable=self.z_idx, orient=tk.HORIZONTAL, command=self.update_plot)
+        self.z_slider.pack(pady=5, fill=tk.X)
+
+        ttk.Label(root, text="R Index:").pack(pady=5)
+        self.r_slider = ttk.Scale(root, from_=0, to=n-1, variable=self.r_idx, orient=tk.HORIZONTAL, command=self.update_plot)
+        self.r_slider.pack(pady=5, fill=tk.X)
 
         # Matplotlib figure and canvas
         self.fig, self.ax = plt.subplots(figsize=(5, 4))
@@ -265,8 +403,15 @@ class PlotApp:
         # Initial plot
         self.update_plot()
 
+
+    def read_file(self):
+        file_path = filedialog.askopenfilename(title="Select Parameter File", filetypes=[("HDF5 Files", "*.h5*")])
+        self.dump_file = file_path
+        self.get_data
+        self.update_plot()
+
     def get_data(self):      
-        self.particle_data_i = read_particles_as_matrix(self.dump_file, 'ions')
+        self.particle_data_i = read_particles_as_matrix(self.dump_file, self.ions_name)
         self.particle_data_e = read_particles_as_matrix(self.dump_file, 'electrons')
         #print(self.particle_data_e.shape)
         self.cells_i = get_cell_indicies(self.particle_data_i, self.z, self.r, self.m, self.n)
@@ -275,6 +420,10 @@ class PlotApp:
         self.E_e, self.E_dist_e = get_energy_distribution(self.particle_data_e, me, self.bins)
         self.V_i, self.V_dist_i = get_velocity_distribution(self.particle_data_i, self.bins)
         self.V_e, self.V_dist_e = get_velocity_distribution(self.particle_data_e, self.bins)
+        self.z_e, self.z_dist_e = get_z_distribution(self.particle_data_e, self.z, self.bins)
+        self.z_i, self.z_dist_i = get_z_distribution(self.particle_data_i, self.z, self.bins)
+        self.r_e, self.r_dist_e = get_r_distribution(self.particle_data_e, self.r, self.bins)
+        self.r_i, self.r_dist_i = get_r_distribution(self.particle_data_i, self.r, self.bins)
 
         Z = np.linspace(0, self.z, self.m-1)
         R = np.linspace(0, self.r, self.n-1)
@@ -288,6 +437,11 @@ class PlotApp:
         self.Ti = get_temperature_distribution(self.particle_data_i, self.cells_i, self.m, self.n, mp)
         self.Te = get_temperature_distribution(self.particle_data_e, self.cells_e, self.m, self.n, me)
         self.dl = get_debye_length(self.Ne, self.Ni, self.Te, self.Ti)
+
+        self.bins_v_i, self.V_dist_spacial_i = get_distribution_function_V(self.particle_data_i, self.cells_i, self.m, self.n, self.bins)
+        self.bins_v_e, self.V_dist_spacial_e = get_distribution_function_V(self.particle_data_e, self.cells_e, self.m, self.n, self.bins)
+        self.bins_E_i, self.E_dist_spacial_i = get_distribution_function_E(self.particle_data_i, self.cells_i, mp, self.m, self.n, self.bins)
+        self.bins_E_e, self.E_dist_spacial_e = get_distribution_function_E(self.particle_data_e, self.cells_e, me, self.m, self.n, self.bins)
 
 
     def update_plot(self, event=None):
@@ -355,6 +509,7 @@ class PlotApp:
             self.ax = self.fig.add_subplot(111, projection='3d')
             
             parameter_name = plot_type.split("_")[0]
+            
 
             
             if parameter_name == "Te":
@@ -421,6 +576,9 @@ class PlotApp:
 
         # For distribution plots
         elif plot_type.endswith("_distribution"):
+
+            i, j = self.z_idx.get(), self.r_idx.get()
+
             if plot_type == "e_velocity_distribution":
                 self.ax.plot(self.V_e, self.V_dist_e, 'b-', linewidth=2)
                 self.ax.set_title("Electron Velocity Distribution")
@@ -484,13 +642,74 @@ class PlotApp:
                     self.ax.plot(E, maxwellian, 'r--', linewidth=1.5, label="Maxwellian")
                     self.ax.legend()
                 
+            elif plot_type == "zi_distribution":
+                self.ax.plot(self.z_i, self.z_dist_i, 'g-', linewidth=2)
+                self.ax.set_title("Ion Z Distribution")
+                self.ax.set_xlabel("z (m)")
+                self.ax.set_ylabel("Probability Density")
+            
+            elif plot_type == "ze_distribution":
+                self.ax.plot(self.z_e, self.z_dist_e, 'g-', linewidth=2)
+                self.ax.set_title("Electron Z Distribution")
+                self.ax.set_xlabel("z (m)")
+                self.ax.set_ylabel("Probability Density")
+            
+            elif plot_type == "ri_distribution":
+                self.ax.plot(self.r_i, self.r_dist_i, 'g-', linewidth=2)
+                self.ax.set_title("Ion R Distribution")
+                self.ax.set_xlabel("r (m)")
+                self.ax.set_ylabel("Probability Density")
+            
+            elif plot_type == "re_distribution":
+                self.ax.plot(self.r_e, self.r_dist_e, 'g-', linewidth=2)
+                self.ax.set_title("Electron R Distribution")
+                self.ax.set_xlabel("r (m)")
+                self.ax.set_ylabel("Probability Density")
+            
+            elif plot_type == "i_v_grid_distribution":
+                self.ax.plot(self.bins_v_i, self.V_dist_spacial_i[i, j], label=f"Cell ({i}, {j})")
+                self.ax.set_xlabel("Velocity Magnitude")
+                self.ax.set_ylabel("Probability Density")
+                self.ax.set_title("Velocity Distribution")
+
+            elif plot_type == "e_v_grid_distribution":
+                self.ax.plot(self.bins_v_e, self.V_dist_spacial_e[i, j], label=f"Cell ({i}, {j})")
+                self.ax.set_xlabel("Energy")
+                self.ax.set_ylabel("Probability Density")
+                self.ax.set_title("Energy Distribution")
+            
+            elif plot_type == "i_E_grid_distribution":
+                self.ax.plot(self.bins_E_i, self.E_dist_spacial_i[i, j], label=f"Cell ({i}, {j})")
+                self.ax.set_xlabel("Velocity Magnitude")
+                self.ax.set_ylabel("Probability Density")
+                self.ax.set_title("Velocity Distribution")
+
+            elif plot_type == "e_E_grid_distribution":
+                self.ax.plot(self.bins_E_e, self.E_dist_spacial_e[i, j], label=f"Cell ({i}, {j})")
+                self.ax.set_xlabel("Energy")
+                self.ax.set_ylabel("Probability Density")
+                self.ax.set_title("Energy Distribution")
+            
         
         # Redraw canvas
         self.canvas.draw()
 
 if __name__ == '__main__':
 
-    bins = 512
+    bins = 32
+    path = 'dump/1.h5'
+    Z = 0.128
+    R = 0.064
+    m = 128
+    n = 64
+
     root = tk.Tk()
-    app = PlotApp(root, 'dump/1.h5', 128, 64, 0.128, 0.064, bins, boltzman=True)
+    app = PlotApp(root, 'Arions', 'dump/Ar_magnetron_20mA_270V.h5', m, n, Z, R, bins, boltzman=True)
     root.mainloop()
+
+
+    #parts = read_particles_as_matrix(path, 'ions')
+    #cells = get_cell_indicies(parts, Z, R, m, n)
+    #r, v_dist = get_distribution_function_V(parts, cells, m, n, bins)
+
+    #plot_distribution(r, v_dist, 3, 5)
