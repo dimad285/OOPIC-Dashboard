@@ -4,6 +4,9 @@ import threading
 import os
 import numpy as np
 import parser
+import time
+import postprocessing
+import diagnostics
 
 class ProcessData:
     def __init__(self, process_id, input_file_path, dump_file_path):
@@ -28,12 +31,25 @@ class ProcessData:
         self.kb = 1.38064852e-23  # Boltzmann constant
         self.e0 = 8.85418782e-12  # Vacuum permittivity
 
-        self.m = 0
-        self.n = 0
-        self.z = 0
-        self.r = 0
+        self.max_ne = 0
+        self.max_ne_idx = [0, 0]
+        self.max_ni = 0
+        self.max_ni_idx = [0, 0]
+        self.min_dl_e = 0
+        self.min_larmor_radius = 0
+        self.min_cell_fly_time = 0
+        self.max_cycl_f = 0
+        self.max_plasma_f = 0
+        self.coll_f = 0
+
+        self.m = 128
+        self.n = 64
+        self.z = 0.128
+        self.r = 0.064
 
         self.test_command = 'C:/Users/Dima/anaconda3/python.exe test_launch.py'
+
+        self.process_time = 0
 
     def cmdStartH5(self):
         cmd = f'oopicpro -i {self.input_file_path}.inp -nox -h5 -od {self.dump_file_path}' 
@@ -85,7 +101,8 @@ class ProcessData:
 
         thread = threading.Thread(target=run_simulation)
         thread.start()
-    
+        self.process_time = time.time()
+
     def update_from_file(self):
         """Check if the HDF5 file has new data and update attributes."""
         if not os.path.exists(self.dump_file_path):
@@ -109,6 +126,21 @@ class ProcessData:
         print(f"Process {self.process_id} updated with {particle_count} particles and {target_current} current.")
         
         self.additional_info = f"Particles: {particle_count}, Current: {target_current}, Voltage: {self.voltage}, Pressure: {self.pressure}"
+
+        self.np2c = postprocessing.read_np2c(self.dump_file_path, 'electrons')
+        self.part_idx = postprocessing.get_cell_indicies(self.particle_data, self.z, self.r, self.m, self.n)
+        self.ne = postprocessing.get_numerical_density(self.part_idx, self.z, self.r, self.m, self.n, self.np2c)
+        self.max_ne, self.max_ne_idx = diagnostics.max_value_in_array(self.ne)
+        self.Te = postprocessing.get_temperature_distribution(self.particle_data, self.part_idx, self.m, self.n, self.me)
+        self.Te_max = self.Te[self.max_ne_idx[0], self.max_ne_idx[1]]
+        self.min_dl_e = diagnostics.debye_length(self.max_ne, self.Te_max)
+        self.max_v = diagnostics.max_velocity(self.particle_data)
+        self.min_larmor_radius = diagnostics.larmor_radius(self.max_v, 1, self.qe, self.me)
+        self.min_cell_fly_time = np.hypot(self.z/(self.m-1), self.r/(self.n-1)) / self.max_v
+        self.max_plasma_f = diagnostics.plasma_frequency(self.max_ne, self.qe, self.me)
+        self.max_cycl_f = diagnostics.cyclotron_frequency(1, self.qe, self.me)
+        self.coll_f = diagnostics.collision_frequency(1, self.max_v, 1)
+        
         return True  # Update happened
     
     def read_particles_as_matrix(self, particle_name: str):
@@ -146,37 +178,6 @@ class ProcessData:
         e_mean = np.mean(np.sum(v**2, axis=0)) * self.mp * self.A
         return 2 * e_mean / (3 * self.kb)
     
-    def compute_spatial_distribution(self):
-        """Compute local temperature and density on a 2D grid"""
-        x, y = self.particle_data[:2]  # Extract positions
-        vx, vy, vz = self.particle_data[2:]
-
-        # Define grid
-        x_bins = np.linspace(np.min(x), np.max(x), self.m + 1)
-        y_bins = np.linspace(np.min(y), np.max(y), self.n + 1)
-        
-        local_temperature = np.zeros((self.m, self.n))
-        local_density = np.zeros((self.m, self.n))
-        particle_counts = np.zeros((self.m, self.n))
-
-        # Assign particles to grid cells
-        x_indices = np.digitize(x, x_bins) - 1
-        y_indices = np.digitize(y, y_bins) - 1
-        
-        for i in range(self.particle_data.shape[1]):
-            xi, yi = x_indices[i], y_indices[i]
-            if 0 <= xi < self.m and 0 <= yi < self.n:
-                kinetic_energy = 0.5 * self.mp * self.A * (vx[i]**2 + vy[i]**2 + vz[i]**2)
-                local_temperature[xi, yi] += kinetic_energy
-                local_density[xi, yi] += 1
-                particle_counts[xi, yi] += 1
-        
-        # Normalize
-        local_temperature /= (3 * self.kb * np.maximum(particle_counts, 1))
-        local_density /= self.x * self.y / (self.m * self.n)
-        local_debye_length = np.sqrt(self.e0 * self.kb * local_temperature / (local_density * self.qe**2))
-        
-        return local_temperature, local_density, local_debye_length
     
     def read_input_file(self, param_list):
         # Implement logic to read input file

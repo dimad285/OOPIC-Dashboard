@@ -6,11 +6,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import Axes3D
 import h5py
 
-kb = 1.38064852e-23  # Boltzmann constant
+kb = 8.617e-5 #1.38064852e-23  # Boltzmann constant
+kb_j = 1.38064852e-23
 qe = -1.60217662e-19  # Elementary charge    
 mp = 1.6726219e-27  # Mass of hydrogen
 e0 = 8.85418782e-12  # Vacuum permittivity
 me = 9.1e-31
+T_ratio = 11604.518
 
 
 def read_particles_as_matrix(dump_file_path, particle_name: str):
@@ -33,11 +35,28 @@ def read_particles_as_matrix(dump_file_path, particle_name: str):
         particle_data = np.vstack(data_list).T
 
     return particle_data
-        
-
     
+def read_np2c(dump_file_path, particle_name: str):
+
+    with h5py.File(dump_file_path, 'r') as f:
+        if particle_name not in f:
+            return 1
+        elif len(f[particle_name]) == 0:
+            return 1
+
+        
+        np2c = f[particle_name]['pGrp0'].attrs['np2c'][0]
+
+    return np2c
 
 
+def read_grid_dimension(dump_file_path):
+
+    with h5py.File(dump_file_path, 'r') as f:
+        
+        z, r = f['SpatialRegion'].attrs['dims'][2:]
+        m, n = f['NGD0']['NGD'].shape[:2]
+        
 
 def get_cell_indicies(particle_data, Z, R, m, n):
 
@@ -72,7 +91,7 @@ def get_cell_indicies(particle_data, Z, R, m, n):
     return cell_indices
 
 
-def get_numerical_density(cell_indices, Z, R, m, n):
+def get_numerical_density(cell_indices, Z, R, m, n, np2c = 1):
     """
     Compute numerical density in a 2D axisymmetric cylindrical grid.
 
@@ -106,7 +125,7 @@ def get_numerical_density(cell_indices, Z, R, m, n):
     # Normalize by cell volume
     nd /= dV[None, :]  # Broadcast across all z-layers
 
-    return nd
+    return nd * np2c
 
 
 def get_energy_distribution(particle_data, M, bins = 64):
@@ -116,7 +135,7 @@ def get_energy_distribution(particle_data, M, bins = 64):
         return (np.arange(bins), np.zeros(bins))
     
     v = particle_data[2:, :]
-    E = (np.sum(v**2, axis=0)) * M * 0.5
+    E = (np.sum(v**2, axis=0)) * M * 0.5 / (-qe)
     x = np.arange(bins) * np.max(E)/bins
     return (x, np.histogram(E, bins, density=True)[0])
 
@@ -139,8 +158,8 @@ def get_plasma_temperature(particle_data, M):
         return 0
     
     v = particle_data[2:, :]
-    e_mean = np.mean(np.sum(v**2, axis=0)) * M
-    return e_mean / (3 * kb)
+    e_mean = np.mean(np.sum(v**2, axis=0)) * M / 2 / (-qe)
+    return 2 * e_mean / (3 * kb) / T_ratio
 
 def get_temperature_distribution(particle_data, cell_indices, m, n, M):
     """
@@ -171,18 +190,19 @@ def get_temperature_distribution(particle_data, cell_indices, m, n, M):
     # Compute squared speeds
     v = particle_data[2:, :]
     v_squared = np.sum(v**2, axis=0)
+    E = v_squared * M * 0.5 / (-qe)
 
     # Accumulate sum of squared speeds per cell
-    np.add.at(T, (cell_indices[0], cell_indices[1]), v_squared)
+    np.add.at(T, (cell_indices[0], cell_indices[1]), E)
 
     # Count the number of particles in each cell
     np.add.at(particle_count, (cell_indices[0], cell_indices[1]), 1)
 
     # Avoid division by zero
     mask = particle_count > 0
-    T[mask] = (M / kb) * (T[mask] / particle_count[mask])
+    T[mask] = (T[mask] / particle_count[mask]) * 2 / (3 * kb)
 
-    return T
+    return T / T_ratio
 
 
 def get_plasma_density(numerical_density, q):
@@ -193,15 +213,15 @@ def get_plasma_density(numerical_density, q):
 def get_debye_length(ne, ni, Te, Ti):
 
     a = e0 * kb / qe**2
-    mask_te = Te == 0
-    mask_ti = Ti == 0
-    te = Te
-    ti = Ti
-    te[mask_te] = 1
-    ti[mask_ti] = 1
+    #Te == 0
+    #mask_ti = Ti == 0
+    #te = Te
+    #ti = Ti
+    #te[mask_te] = 1
+    #ti[mask_ti] = 1
 
-    c = ne/te
-    d = ni/ti
+    c = 1
+    d = 1
     b = (c + d)
 
     l_sq = a / b
@@ -233,7 +253,7 @@ def get_distribution_function_E(particle_data, cell_indices, M, m, n, bins):
     # Compute velocity magnitudes
     v_sq = v[0]**2 + v[1]**2 + v[2]**2
 
-    E = 0.5 * v_sq * M
+    E = 0.5 * v_sq * M / (-qe)
 
     # Prepare histogram bins
     e_min, e_max = 0, np.max(E)
@@ -326,7 +346,7 @@ def get_z_distribution(particle_data, Z, bins):
         print('0 particles')
         return (np.arange(bins), np.zeros(bins))
     
-    z = particle_data[0:, :]
+    z = particle_data[0, :]
     x = np.arange(bins) * Z/bins
     return (x, np.histogram(z, bins, density=True)[0])
 
@@ -337,14 +357,14 @@ def get_r_distribution(particle_data, R, bins):
         print('0 particles')
         return (np.arange(bins), np.zeros(bins))
     
-    z = particle_data[1:, :]
+    z = particle_data[1, :]
     x = np.arange(bins) * R/bins
     return (x, np.histogram(z, bins, density=True)[0])
 
 
 
 class PlotApp:
-    def __init__(self, root, ions_name, file_path, m, n, z, r, bins, boltzman = False):
+    def __init__(self, root, ions_name, file_path, m, n, z, r, bins, boltzman = False, np2c = 1):
         self.root = root
         self.root.title("Plot Selector")
         #self.root.configure(bg='#24292e')
@@ -356,6 +376,7 @@ class PlotApp:
         self.bins = bins
         self.boltzman = boltzman
         self.ions_name = ions_name
+        self.np2c = np2c
 
         # Dropdown menu
         self.plot_types = [
@@ -430,8 +451,8 @@ class PlotApp:
 
         self.Z, self.R = np.meshgrid(Z, R)
 
-        self.Ni = get_numerical_density(self.cells_i, self.z, self.r, self.m, self.n)
-        self.Ne = get_numerical_density(self.cells_e, self.z, self.r, self.m, self.n)
+        self.Ni = get_numerical_density(self.cells_i, self.z, self.r, self.m, self.n, self.np2c)
+        self.Ne = get_numerical_density(self.cells_e, self.z, self.r, self.m, self.n, self.np2c)
         self.rho_i = get_plasma_density(self.Ni, -qe)
         self.rho_e = get_plasma_density(self.Ne, qe)
         self.Ti = get_temperature_distribution(self.particle_data_i, self.cells_i, self.m, self.n, mp)
@@ -466,12 +487,12 @@ class PlotApp:
             if plot_type == "Te_heatmap":
                 im = self.ax.pcolormesh(Z, R, self.Te.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Electron Temperature")
-                self.fig.colorbar(im, ax=self.ax, label="Temperature (K)")
+                self.fig.colorbar(im, ax=self.ax, label="Temperature (eV)")
                 
             elif plot_type == "Ti_heatmap":
                 im = self.ax.pcolormesh(Z, R, self.Ti.T, cmap="plasma", shading='auto')
                 self.ax.set_title("Ion Temperature")
-                self.fig.colorbar(im, ax=self.ax, label="Temperature (K)")
+                self.fig.colorbar(im, ax=self.ax, label="Temperature (eV)")
                 
             elif plot_type == "ne_heatmap":
                 im = self.ax.pcolormesh(Z, R, self.Ne.T, cmap="plasma", shading='auto')
@@ -509,22 +530,22 @@ class PlotApp:
             self.ax = self.fig.add_subplot(111, projection='3d')
             
             parameter_name = plot_type.split("_")[0]
-            
-
+        
             
             if parameter_name == "Te":
-                surf = self.ax.plot_surface(ZZ, RR, self.Te.T, cmap="plasma", 
+                surf = self.ax.plot_surface(ZZ, RR, np.log10(self.Te.T+0.1), cmap="plasma", 
                                         edgecolor='none', alpha=0.8)
-                self.ax.set_title("Electron Temperature")
+                self.ax.set_title("Electron Temperature log10")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
-                                label="Temperature (K)")
+                                label="Temperature (eV)")
+                #print('min T', np.min(self.Te))
                 
             elif parameter_name == "Ti":
                 surf = self.ax.plot_surface(ZZ, RR, self.Ti.T, cmap="plasma", 
                                         edgecolor='none', alpha=0.8)
                 self.ax.set_title("Ion Temperature")
                 self.fig.colorbar(surf, ax=self.ax, pad=0.1, shrink=0.5, 
-                                label="Temperature (K)")
+                                label="Temperature (eV)")
                 
             elif parameter_name == "ne":
                 surf = self.ax.plot_surface(ZZ, RR, self.Ne.T, cmap="plasma", 
@@ -588,9 +609,9 @@ class PlotApp:
                 
                 # Add Maxwell-Boltzmann distribution for comparison if enough particles
                 if self.particle_data_e.shape[1] > 10 and self.boltzman:
-                    T_e = get_plasma_temperature(self.particle_data_e, me)
+                    T_e = get_plasma_temperature(self.particle_data_e, me) * T_ratio
                     v = np.linspace(0, np.max(self.V_e), 100)
-                    maxwell = 4*np.pi * (me/(2*np.pi*kb*T_e))**(3/2) * v**2 * np.exp(-me*v**2/(2*kb*T_e))
+                    maxwell = 4*np.pi * (me/(2*np.pi*kb+j*T_e))**(3/2) * v**2 * np.exp(-me*v**2/(2*kb_j*T_e))
                     self.ax.plot(v, maxwell, 'r--', linewidth=1.5, label="Maxwell-Boltzmann")
                     self.ax.legend()
                 
@@ -604,9 +625,9 @@ class PlotApp:
                 
                 # Add Maxwell-Boltzmann distribution for comparison if enough particles
                 if self.particle_data_i.shape[1] > 10 and self.boltzman:
-                    T_i = get_plasma_temperature(self.particle_data_i, mp)
+                    T_i = get_plasma_temperature(self.particle_data_i, mp) * T_ratio
                     v = np.linspace(0, np.max(self.V_i), 100)
-                    maxwell = 4*np.pi * (mp/(2*np.pi*kb*T_i))**(3/2) * v**2 * np.exp(-mp*v**2/(2*kb*T_i))
+                    maxwell = 4*np.pi * (mp/(2*np.pi*kb_j*T_i))**(3/2) * v**2 * np.exp(-mp*v**2/(2*kb_j*T_i))
                     self.ax.plot(v, maxwell, 'r--', linewidth=1.5, label="Maxwell-Boltzmann")
                     self.ax.legend()
                 
@@ -614,13 +635,13 @@ class PlotApp:
             elif plot_type == "e_energy_distribution":
                 self.ax.plot(self.E_e, self.E_dist_e, 'b-', linewidth=2)
                 self.ax.set_title("Electron Energy Distribution")
-                self.ax.set_xlabel("Energy (J)")
+                self.ax.set_xlabel("Energy (eV)")
                 self.ax.set_ylabel("Probability Density")
                 
                 
                 # Add Maxwellian energy distribution for comparison if enough particles
                 if self.particle_data_e.shape[1] > 10 and self.boltzman:
-                    T_e = get_plasma_temperature(self.particle_data_e, me)
+                    T_e = get_plasma_temperature(self.particle_data_e, me) * T_ratio
                     E = np.linspace(0, np.max(self.E_e), 100)
                     maxwellian = 2 * np.pi * (1/(np.pi*kb*T_e))**(3/2) * np.sqrt(E) * np.exp(-E/(kb*T_e))
                     self.ax.plot(E, maxwellian, 'r--', linewidth=1.5, label="Maxwellian")
@@ -630,13 +651,13 @@ class PlotApp:
             elif plot_type == "i_energy_distribution":
                 self.ax.plot(self.E_i, self.E_dist_i, 'g-', linewidth=2)
                 self.ax.set_title("Ion Energy Distribution")
-                self.ax.set_xlabel("Energy (J)")
+                self.ax.set_xlabel("Energy (eV)")
                 self.ax.set_ylabel("Probability Density")
                 
                 
                 # Add Maxwellian energy distribution for comparison if enough particles
                 if self.particle_data_i.shape[1] > 10 and self.boltzman:
-                    T_i = get_plasma_temperature(self.particle_data_i, mp)
+                    T_i = get_plasma_temperature(self.particle_data_i, mp) * T_ratio
                     E = np.linspace(0, np.max(self.E_i), 100)
                     maxwellian = 2 * np.pi * (1/(np.pi*kb*T_i))**(3/2) * np.sqrt(E) * np.exp(-E/(kb*T_i))
                     self.ax.plot(E, maxwellian, 'r--', linewidth=1.5, label="Maxwellian")
@@ -696,17 +717,16 @@ class PlotApp:
 
 if __name__ == '__main__':
 
-    bins = 32
-    path = 'dump/1.h5'
-    Z = 0.128
-    R = 0.064
-    m = 128
-    n = 64
-
+    bins = 128
+    path = 'dump/Ar_magnetron_20mA_270V.h5'
+    i_name = 'Arions'
+    m, n, Z, R = read_grid_dimension(path)
+    np2c = read_np2c(path, i_name)
+    
     root = tk.Tk()
-    app = PlotApp(root, 'Arions', 'dump/Ar_magnetron_20mA_270V.h5', m, n, Z, R, bins, boltzman=True)
+    app = PlotApp(root, i_name, path, m, n, Z, R, bins, boltzman=True, np2c = np2c)
     root.mainloop()
-
+    
 
     #parts = read_particles_as_matrix(path, 'ions')
     #cells = get_cell_indicies(parts, Z, R, m, n)

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ProcessData
 import shutil
+import numpy as np
 
 NUM_PROCESSES = 3  # Default number of simulated processes
 COLS = 4  # Number of columns in the grid layout
@@ -23,13 +24,25 @@ class ProcessFrame:
         self.frame = ttk.LabelFrame(parent, text=f"Process {process_id+1}", padding=10,)
         self.frame.configure(style="TFrame")
         
-        self.info_label_voltage = ttk.Label(self.frame, text="voltage: 0",
-                                            font=("Arial", font_size))
-        self.info_label_pressure = ttk.Label(self.frame,  text="pressure: 0",
-                                            font=("Arial", font_size))
-        self.info_label_voltage.pack()
-        self.info_label_pressure.pack()
-    
+        self.table = ttk.Treeview(self.frame, columns=("Parameter", "Value", "Relative Value"), show="headings", height=6)
+        self.table.heading("Parameter", text="Parameter")
+        self.table.heading("Value", text="Value")
+        self.table.heading("Relative Value", text="Relative Value")
+        self.table.column("Parameter", width=120)
+        self.table.column("Value", width=100)
+        self.table.pack(pady=5, fill=tk.X)
+
+        # Table default values
+        self.parameters = [
+            ("Min Debye", "0"),
+            ("Larmor Radius", "0 Pa"),
+            ("Plasma f", "0"),
+            ("Cyclotron f", "0 A"),
+            ("Collision f", "0 /m³"),
+            ("Flyby Time", "0 K")
+        ]
+        for param, value in self.parameters:
+            self.table.insert("", "end", values=(param, value))
         
         self.fig, self.ax1 = plt.subplots(figsize=(6, 4), tight_layout=True)
         self.ax2 = self.ax1.twinx()
@@ -41,6 +54,34 @@ class ProcessFrame:
         self.ax2.set_facecolor(CURRENT_THEME["bg"])  # Darker gray plot background
 
         
+    def update_table(self, process: ProcessData.ProcessData):
+        """
+        Updates the table values using data from the given ProcessData instance.
+
+        Parameters:
+        - process: ProcessData instance containing simulation data.
+        """
+        # Extract latest values from process data
+        debye = f"{process.min_dl_e:.2f} m"
+        lr = f"{process.min_larmor_radius:.2e} m"
+        plf = f"{process.max_plasma_f:.2e} Hz"
+        clf = f"{process.max_cycl_f:.2e} Hz"
+        colf = f"{process.coll_f:.2e} Hz"
+        flbt = f"{process.min_cell_fly_time:.2e} s"
+
+        # New values for the table
+        new_values = [
+            ("Min Debye", debye),
+            ("Larmor Radius", lr),
+            ("Plasma f", plf),
+            ("Cyclotron f", clf),
+            ("Collision f", colf),
+            ("Flyby Time", flbt)
+        ]
+
+        # Update table entries
+        for i, (param, value) in enumerate(new_values):
+            self.table.item(self.table.get_children()[i], values=(param, value))
     
     def update_plot(self, process: ProcessData.ProcessData):
         self.ax1.clear()
@@ -66,10 +107,6 @@ class ProcessFrame:
         self.fig.tight_layout()  # Ensure labels fit without overlapping
         self.canvas.draw()
 
-        if self.info_label_voltage != None:
-            self.info_label_voltage.config(text=f'voltage: {process.voltage}')
-        if self.info_label_pressure != None:
-            self.info_label_pressure.config(text=f'pressure: {process.pressure}')
     
     def grid(self, row, col):
         self.frame.grid(row=row, column=col, padx=10, pady=5, sticky="nsew")
@@ -89,7 +126,7 @@ class TitleScreen:
         self.process_settings_frame = ttk.Frame(root)
         self.process_settings_frame.pack()
 
-        self.set_process_count_button = tk.Button(root, text="Set Processes", command=self.create_process_fields, bg=CURRENT_THEME["frame_bg"], fg=CURRENT_THEME["fg"])
+        self.set_process_count_button = ttk.Button(root, text="Set Processes", command=self.create_process_fields)
         self.set_process_count_button.pack()
 
         # Extra features
@@ -271,6 +308,7 @@ class DashboardApp:
         for i, process in enumerate(self.processes):
             if process.process_finished:
                 self.frames[i].update_plot(process)
+                self.frames[i].update_table(process)
                 process.process_finished = False
                 process.ready_for_launch = True
             elif process.ready_for_launch:
