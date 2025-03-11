@@ -92,7 +92,7 @@ class ProcessFrame:
             self.table.item(self.table.get_children()[i], values=(param, value))
 
         elapsed = process.end_time - process.start_time
-        time = f'process {process.process_id} time: {elapsed:.2f}'
+        time = f'process {process.process_id} time: {elapsed:.2f} s'
         self.frame.configure(text=time)
     
     def update_plot(self, process: ProcessData.ProcessData):
