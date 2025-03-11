@@ -96,12 +96,14 @@ class ProcessData:
             self.update_from_file()  # Update data after process finishes
             self.process_finished = True  # Mark process as completed
             print(f"Process {self.process_id} finished.")
+            self.end_time = time.time()
         
             #self.ready_for_launch = True  # Mark as ready for new launch
 
         thread = threading.Thread(target=run_simulation)
+        self.start_time = time.time()
         thread.start()
-        self.process_time = time.time()
+        
 
     def update_from_file(self):
         """Check if the HDF5 file has new data and update attributes."""

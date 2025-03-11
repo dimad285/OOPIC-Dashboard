@@ -24,6 +24,7 @@ class ProcessFrame:
         self.frame = ttk.LabelFrame(parent, text=f"Process {process_id+1}", padding=10,)
         self.frame.configure(style="TFrame")
         
+
         self.table = ttk.Treeview(self.frame, columns=("Parameter", "Value", "Relative Value"), show="headings", height=6)
         self.table.heading("Parameter", text="Parameter")
         self.table.heading("Value", text="Value")
@@ -31,6 +32,8 @@ class ProcessFrame:
         self.table.column("Parameter", width=120)
         self.table.column("Value", width=100)
         self.table.pack(pady=5, fill=tk.X)
+
+        
 
         # Table default values
         self.parameters = [
@@ -69,19 +72,28 @@ class ProcessFrame:
         colf = f"{process.coll_f:.2e} Hz"
         flbt = f"{process.min_cell_fly_time:.2e} s"
 
+        dz = process.z/(process.m - 1)
+        dr = process.r/(process.n - 1)
+        cell_size = np.hypot(dz, dr)
+        dt = 1e-12
+
         # New values for the table
         new_values = [
-            ("Min Debye", debye),
-            ("Larmor Radius", lr),
-            ("Plasma f", plf),
-            ("Cyclotron f", clf),
-            ("Collision f", colf),
-            ("Flyby Time", flbt)
+            ("Min Debye", debye, debye/cell_size),
+            ("Larmor Radius", lr, lr/cell_size),
+            ("Plasma f", 1/plf, dt/plf),
+            ("Cyclotron f", 1/clf, dt/clf),
+            ("Collision f", 1/colf, dt/colf),
+            ("Flyby Time", flbt, flbt/dt)
         ]
 
         # Update table entries
         for i, (param, value) in enumerate(new_values):
             self.table.item(self.table.get_children()[i], values=(param, value))
+
+        elapsed = process.end_time - process.start_time
+        time = f'process {process.process_id} time: {elapsed:.2f}'
+        self.frame.configure(text=time)
     
     def update_plot(self, process: ProcessData.ProcessData):
         self.ax1.clear()
